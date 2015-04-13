@@ -42,13 +42,23 @@ record Stream {a} (A : Set a) : Set a where
 open Stream
 
 ------------------------------------------------------------------------
--- Any is an inductively defined predicate on streams
+-- Predicates on streams
 
+-- Any is inductively defined
 data Any {a p} {A : Set a}
          (P : A → Set p) : Stream A → Set (a ⊔ p) where
   here  : ∀ {s} (px : P (head s))     → Any P s
   there : ∀ {s} (ps : Any P (tail s)) → Any P s
 
+-- All is a coinductive predicate
+record All {a p} {A : Set a}
+           (P : A → Set p) (s : Stream A) : Set (a ⊔ p) where
+  coinductive
+  field
+    ✓-head : P (head s)
+    ✓-tail : All P (tail s)
+
+open All
 
 ------------------------------------------------------------------------
 -- AE (for always eventually) is not well-founded. In order to make it
@@ -184,7 +194,7 @@ split n s = take n s , drop n s
 
 
 ------------------------------------------------------------------------
--- Finding and splitting streams with Any
+-- Finding elements and splitting streams with Any
 
 -- Split a stream on an instance of Any. The head of the stream that is
 -- returned fulfills the predicate.
@@ -212,25 +222,76 @@ find : ∀ {a p} {A : Set a} {P : A → Set p} →
 find s (here  px)  = s , px
 find s (there any) = find (tail s) any
 
--- Find returns its own proof of correctness, making this lemma trivial.
+-- `find` returns its own proof of correctness, making this lemma
+-- trivial.
 find-lemma : ∀ {a p} → {A : Set a} {P : A → Set p}
-             (s : Stream A) (any : Any P s) → P (head (proj₁ (find s any)))
+             (s : Stream A) (any : Any P s) →
+             P (head (proj₁ (find s any)))
 find-lemma s any with find s any
 find-lemma s any | _ , prf = prf
 
 
 ------------------------------------------------------------------------
--- Finding and splitting streams with AE (always eventually)
+-- Finding elements and splitting streams with AE (always eventually)
 
+-- Drop the elements preceding the first one pointed to by AE. For
+-- convenience, we also return a proof the the head of the stream
+-- fulfills the predicate, and an AE instance for its tail.
 dropUntil : ∀ {a p} {A : Set a} {P : A → Set p} →
             (s : Stream A) → AE P s →
             ∃ (λ (s : Stream A) → P (head s) × AE P (tail s))
 dropUntil s (here px ps) = s , (px , ♭ ps)
 dropUntil s (there ae)   = dropUntil (tail s) ae
 
-repeat : ∀ {a} {A : Set a} → A → Stream A
+-- Filter a stream by AE. We return the proof of P x along with every
+-- element x of the resulting stream.
+filter : ∀ {a p} → {A : Set a} (P : A → Set p) (s : Stream A) →
+         AE P s → Stream (Σ A P)
+head (filter P s (here px ps)) = head s , px
+head (filter P s (there ae))   = head (filter P (tail s) ae)
+tail (filter P s (here px ps)) = filter P (tail s) (♭ ps)
+tail (filter P s (there ae))   = tail (filter P (tail s) ae)
+
+-- A variant that only returns the elements (no proofs)
+filter′ : ∀ {a p} → {A : Set a} (P : A → Set p) (s : Stream A) →
+          AE P s → Stream A
+head (filter′ P s (here px ps)) = head s
+head (filter′ P s (there ae))   = head (filter′ P (tail s) ae)
+tail (filter′ P s (here px ps)) = filter′ P (tail s) (♭ ps)
+tail (filter′ P s (there ae))   = tail (filter′ P (tail s) ae)
+
+-- And the corresponding manual proof
+filter′-lemma : ∀ {a p} → {A : Set a} (P : A → Set p) (s : Stream A)
+                (ae : AE P s) → All P (filter′ P s ae)
+✓-head (filter′-lemma P s (here px ps)) = px
+✓-head (filter′-lemma P s (there ae))   = ✓-head (filter′-lemma P (tail s) ae)
+✓-tail (filter′-lemma P s (here px ps)) = filter′-lemma P (tail s) (♭ ps)
+✓-tail (filter′-lemma P s (there ae))   = ✓-tail (filter′-lemma P (tail s) ae)
+
+------------------------------------------------------------------------
+-- Streamy functions
+
+-- Repeat something forever
+repeat : ∀ {a} → {A : Set a} → A → Stream A
 head (repeat x) = x
 tail (repeat x) = repeat x
+
+-- As a coalgebra
+repeat′ : ∀ {a} → {A : Set a} → A → Stream A
+repeat′ = unfold id id
+
+-- Bisimulation proof: trivial.
+repeat↔repeat′ : ∀ {a} → {A : Set a} (x : A) → repeat x ≈ repeat′ x
+≈-head (repeat↔repeat′ x) = refl
+≈-tail (repeat↔repeat′ x) = repeat↔repeat′ x
+
+-- Every other element, starting with head
+evens : ∀ {a} {A : Set a} → Stream A → Stream A
+evens = unfold head (tail ∘ tail)
+
+-- Every other element, starting with the head of the tail
+odds : ∀ {a} {A : Set a} → Stream A → Stream A
+odds = evens ∘ tail
 
 all-eq : ∀ {a} {A : Set a} (x y : A) → AE (_≡_ x) (repeat x ⋈ repeat y)
 all-eq x y = here refl (♯ (there (all-eq x y)))
@@ -249,30 +310,24 @@ data noskips : ∀ {a} {A : Set a} (P : A → Set a) → (s : Stream A) → AE P
   next : noskips P s (there ae) = (¬ (P (head s))) × noskips P (tail s) ae
 -}
 
-filter : ∀ {a p} {A : Set a} → (P : A → Set p) → (s : Stream A) → AE P s →
-         Stream (Σ A P)
-head (filter P s (here px ps)) = head s , px
-head (filter P s (there ae))   = head (filter P (tail s) ae)
-tail (filter P s (here px ps)) = filter P (tail s) (♭ ps)
-tail (filter P s (there ae))   = tail (filter P (tail s) ae)
+------------------------------------------------------------------------
+-- Fibonacci series as a stream
 
+-- Elementwise sum of two streams using copatterns
 add : Stream ℕ → Stream ℕ → Stream ℕ
 head (add x y) = head x + head y
 tail (add x y) = add (tail x) (tail y)
 
+-- A variant using `map`
 add′ : Stream ℕ → Stream ℕ → Stream ℕ
 add′ x y = map (uncurry _+_) (zip x y)
 
-add-lemma : ∀ s₁ s₂ → add s₁ s₂ ≈ add′ s₁ s₂
-≈-head (add-lemma s₁ s₂) = refl
-≈-tail (add-lemma s₁ s₂) = add-lemma (tail s₁) (tail s₂)
+-- Bisimulation proof
+add↔add′ : ∀ x y → add x y ≈ add′ x y
+≈-head (add↔add′ x y) = refl
+≈-tail (add↔add′ x y) = add↔add′ (tail x) (tail y)
 
-evens : ∀ {a} {A : Set a} → Stream A → Stream A
-evens = unfold head (tail ∘ tail)
-
-odds : ∀ {a} {A : Set a} → Stream A → Stream A
-odds = evens ∘ tail
-
+-- The Fibonacci series as a coalgebra
 fib : Stream ℕ
 fib = unfold proj₁ next (0 , 1)
   where
@@ -335,8 +390,6 @@ all-eq : ∀ {a} {A : Set a} (x y : A) → AE (_≡_ x) (repeat x ⋈ repeat y)
 all-eq x y = here refl (there (all-eq x y))
 -}
 
-repeat′ : ∀ {a} {A : Set a} → A → Stream A
-repeat′ = unfold id id
 
 ------------------------------------------
 
