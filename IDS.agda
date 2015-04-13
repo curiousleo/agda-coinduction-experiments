@@ -296,19 +296,6 @@ odds = evens ∘ tail
 all-eq : ∀ {a} {A : Set a} (x y : A) → AE (_≡_ x) (repeat x ⋈ repeat y)
 all-eq x y = here refl (♯ (there (all-eq x y)))
 
-{-
-record Unit {ℓ} : Set ℓ where
-  constructor unit
-
-open import Data.Empty
-
-¬ : ∀ {ℓ} → Set ℓ → Set ℓ
-¬ P = P → ⊥
-
-data noskips : ∀ {a} {A : Set a} (P : A → Set a) → (s : Stream A) → AE P s → Set a
-  base : noskips P s (here px ps) , noskips P (tail s) (♭ ps)
-  next : noskips P s (there ae) = (¬ (P (head s))) × noskips P (tail s) ae
--}
 
 ------------------------------------------------------------------------
 -- Fibonacci series as a stream
@@ -333,6 +320,55 @@ fib = unfold proj₁ next (0 , 1)
   where
     next : ℕ × ℕ → ℕ × ℕ
     next (m , n) = n , (m + n)
+
+
+------------------------------------------------------------------------
+-- Functions on infinite binary trees
+------------------------------------------------------------------------
+
+
+-- Unfolding a binary tree. A binary tree coalgebra is defined as an
+-- initial state `y`, a projection `h` and a transition function `t`,
+-- which returns a pair. The first element of that pair is used to
+-- generate the left branch of the tree and second element for the
+-- right branch.
+unfoldT : ∀ {a b} {A : Set a} {B : Set b} → (B → A) → (B → B × B) → B → BTree {a} A
+label (unfoldT h t y) = h y
+left  (unfoldT h t y) = unfoldT h t (proj₁ (t y))
+right (unfoldT h t y) = unfoldT h t (proj₂ (t y))
+
+-- Generate an infinite tree with `x` as the label everywhere
+repeatT : ∀ {a} {A : Set a} → A → BTree A
+repeatT = unfoldT id (λ x → x , x)
+
+-- The left spine of the tree as a stream using copatterns
+lspine : ∀ {a} {A : Set a} → BTree A → Stream A
+head (lspine t) = label t
+tail (lspine t) = lspine (left t)
+
+-- As a stream coalgebra
+lspine′ : ∀ {a} {A : Set a} → BTree A → Stream A
+lspine′ = unfold label left
+
+
+------------------------------------------------------------------------
+-- Random stuff
+------------------------------------------------------------------------
+
+
+{-
+record Unit {ℓ} : Set ℓ where
+  constructor unit
+
+open import Data.Empty
+
+¬ : ∀ {ℓ} → Set ℓ → Set ℓ
+¬ P = P → ⊥
+
+data noskips : ∀ {a} {A : Set a} (P : A → Set a) → (s : Stream A) → AE P s → Set a
+  base : noskips P s (here px ps) , noskips P (tail s) (♭ ps)
+  next : noskips P s (there ae) = (¬ (P (head s))) × noskips P (tail s) ae
+-}
 
 GreaterThan : ℕ → ℕ → Set
 GreaterThan m n = n ≤ m
@@ -380,30 +416,3 @@ unfoldAE′ : ∀ {a b p} {A : Set a} {B : Set b} →
 steps (unfoldAE′ P s i f g h) = f i
 then  (unfoldAE′ P s i f g h) = g i
 after (unfoldAE′ P s i f g h) = {!!}
-
-{-
-now  (all-eq x y) = 0 , refl
-then (all-eq x y) = 1 , (all-eq x y)
--}
-{-
-all-eq : ∀ {a} {A : Set a} (x y : A) → AE (_≡_ x) (repeat x ⋈ repeat y)
-all-eq x y = here refl (there (all-eq x y))
--}
-
-
-------------------------------------------
-
-unfoldT : ∀ {a b} {A : Set a} {B : Set b} → (B → A) → (B → B × B) → B → BTree {a} A
-label (unfoldT h y t) = h t
-left  (unfoldT h y t) = unfoldT h y (proj₁ (y t))
-right (unfoldT h y t) = unfoldT h y (proj₂ (y t))
-
-repeatT : ∀ {a} {A : Set a} → A → BTree A
-repeatT = unfoldT id (λ x → x , x)
-
-lspine : ∀ {a} {A : Set a} → BTree A → Stream A
-head (lspine t) = label t
-tail (lspine t) = lspine (left t)
-
-lspine′ : ∀ {a} {A : Set a} → BTree A → Stream A
-lspine′ = unfold label left
