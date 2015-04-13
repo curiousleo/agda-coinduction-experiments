@@ -1,245 +1,356 @@
 {-# OPTIONS --copatterns #-}
 
+------------------------------------------------------------------------
+-- Infinite data structures in Agda
+--
+-- Streams, infinite binary trees and conversions between them
+------------------------------------------------------------------------
+
 module IDS where
 
-  open import Level using (_⊔_)
+open import Coinduction hiding (unfold)
 
-  open import Function
+open import Data.Bool
+open import Data.Nat hiding (_⊔_)
+import Data.List as L
+open L using (List; []; _∷_)
+open import Data.Product hiding (zip) renaming (map to mapP)
+open import Data.Sum using (_⊎_)
 
-  open import Data.Bool
-  open import Data.Maybe using (Maybe; just; nothing)
-  open import Data.Nat hiding (_⊔_)
+open import Function
 
-  import Data.List as L
-  open L using (List; []; _∷_)
-  import Data.Product as P
-  open P using (Σ; _,_; <_,_>; _×_; proj₁; proj₂; uncurry; swap)
-  import Data.Sum as S
-  open S using (_⊎_)
+open import Level using (_⊔_)
 
-  open import Relation.Binary.PropositionalEquality
+open import Relation.Binary.PropositionalEquality
 
-  record Stream {a} (A : Set a) : Set a where
-    coinductive
-    constructor _<:_
-    field
-      head : A
-      tail : Stream {a} A
 
-  open Stream
+------------------------------------------------------------------------
+-- Data types
+------------------------------------------------------------------------
 
-  data Any {a p} {A : Set a}
-           (P : A → Set p) : Stream A → Set (a ⊔ p) where
-    here  : ∀ {s} (px : P (head s))     → Any P s
-    there : ∀ {s} (ps : Any P (tail s)) → Any P s
 
-  open import Coinduction hiding (unfold)
+------------------------------------------------------------------------
+-- Infinite streams as coinductively defined records
 
-  data AE {a p} {A : Set a}
-          (P : A → Set p) : Stream A → Set (a ⊔ p) where
-    here  : ∀ {s} (px : P (head s)) → (ps : ∞ (AE P (tail s))) → AE P s
-    there : ∀ {s} (ps : AE P (tail s))                         → AE P s
+record Stream {a} (A : Set a) : Set a where
+  coinductive
+  constructor _<:_
+  field
+    head : A
+    tail : Stream {a} A
 
-  record _≈_ {a} {A : Set a} (s₁ s₂ : Stream A) : Set a where
-    coinductive
-    field
-      ≈-head : head s₁ ≡ head s₂
-      ≈-tail : tail s₁ ≈ tail s₂
+open Stream
 
-  open _≈_
+------------------------------------------------------------------------
+-- Any is an inductively defined predicate on streams
 
-  record BTree {a} (A : Set a) : Set a where
-    coinductive
-    constructor _<|_|>_
-    field
-      left  : BTree A
-      label : A
-      right : BTree A
+data Any {a p} {A : Set a}
+         (P : A → Set p) : Stream A → Set (a ⊔ p) where
+  here  : ∀ {s} (px : P (head s))     → Any P s
+  there : ∀ {s} (ps : Any P (tail s)) → Any P s
 
-  unfold : ∀ {a b} {A : Set a} {B : Set b} → (B → A) → (B → B) → B → Stream {a} A
-  head (unfold h t y) = h y
-  tail (unfold h t y) = unfold h t (t y)
---  unfold h t y = (h y) <: (unfold h t (t y))
 
-  nats : Stream ℕ
-  nats = unfold id suc 0
+------------------------------------------------------------------------
+-- AE (for always eventually) is not well-founded. In order to make it
+-- definable, we had to make this explicit by annotating the coinductive
+-- component with ∞.
 
-  _⋈_ : ∀ {a} {A : Set a} → Stream A → Stream A → Stream A
---  x ⋈ y = record { head = head x ; tail = y ⋈ tail x }
-  head (x ⋈ y) = head x
-  tail (x ⋈ y) = y ⋈ (tail x)
+data AE {a p} {A : Set a}
+        (P : A → Set p) : Stream A → Set (a ⊔ p) where
+  here  : ∀ {s} (px : P (head s)) → (ps : ∞ (AE P (tail s))) → AE P s
+  there : ∀ {s} (ps : AE P (tail s))                         → AE P s
 
-  _⋈′_ : ∀ {a} {A : Set a} → Stream A → Stream A → Stream A
-  _⋈′_ {A = A} x y = unfold (head ∘ proj₁) next (x , y)
-    where
-      next : Stream A × Stream A → Stream A × Stream A
-      next (x , y) = y , tail x
 
-  zip : ∀ {a b} {A : Set a} {B : Set b} → Stream A → Stream B → Stream (A × B)
-  head (zip x y) = (head x , head y)
-  tail (zip x y) = zip (tail x) (tail y)
+------------------------------------------------------------------------
+-- Bisimulation
 
-  zip′ : ∀ {a b} {A : Set a} {B : Set b} → Stream A → Stream B → Stream (A × B)
-  zip′ x y = unfold (P.map head head) (P.map tail tail) (x , y)
+infix 4 _≈_
 
-  map : ∀ {a b} {A : Set a} {B : Set b} → (A → B) → Stream A → Stream B
-  map f = unfold (f ∘ head) tail
+record _≈_ {a} {A : Set a} (s₁ s₂ : Stream A) : Set a where
+  coinductive
+  field
+    ≈-head : head s₁ ≡ head s₂
+    ≈-tail : tail s₁ ≈ tail s₂
 
-  take : ∀ {a} {A : Set a} → ℕ → Stream A → List A
-  take 0       x = []
-  take (suc n) x = (head x) ∷ (take n (tail x))
+open _≈_
 
-  drop : ∀ {a} {A : Set a} → ℕ → Stream A → Stream A
-  drop 0       x = x
-  drop (suc n) x = drop n (tail x)
 
-  split : ∀ {a} {A : Set a} → ℕ → Stream A → List A × Stream A
-  split n s = take n s , drop n s
+------------------------------------------------------------------------
+-- Infinite binary trees
 
-  takeUntil : ∀ {a p} {A : Set a} {P : A → Set p} →
-             (s : Stream A) → Any P s → List A × Stream A
-  takeUntil         ._ (here  {s} px)  = [] , s
-  takeUntil {A = A} ._ (there {s} any) = head s ∷ (proj₁ p) , proj₂ p
-    where
-      p : List A × Stream A
-      p = takeUntil (tail s) any
+record BTree {a} (A : Set a) : Set a where
+  coinductive
+  constructor _<|_|>_
+  field
+    left  : BTree A
+    label : A
+    right : BTree A
 
-  find : ∀ {a p} {A : Set a} {P : A → Set p} →
-         (s : Stream A) → Any P s → Σ (Stream A) (P ∘ head)
-  find s (here  px)  = s , px
-  find s (there any) = find (tail s) any
+open BTree
 
-  dropUntil : ∀ {a p} {A : Set a} {P : A → Set p} →
-              (s : Stream A) → AE P s →
-              P.∃ (λ (s : Stream A) → P (head s) × AE P (tail s))
-  dropUntil s (here px ps) = s , (px , ♭ ps)
-  dropUntil s (there ae)   = dropUntil (tail s) ae
 
-  repeat : ∀ {a} {A : Set a} → A → Stream A
-  head (repeat x) = x
-  tail (repeat x) = repeat x
+------------------------------------------------------------------------
+-- Functions on streams
+------------------------------------------------------------------------
 
-  all-eq : ∀ {a} {A : Set a} (x y : A) → AE (_≡_ x) (repeat x ⋈ repeat y)
-  all-eq x y = here refl (♯ (there (all-eq x y)))
+
+------------------------------------------------------------------------
+-- Unfolding a coalgebra. Here, stream coalgebras are defined by an
+-- initial state `y`, a projection `h` and a transition function `t`.
+
+unfold : ∀ {a b} {A : Set a} {B : Set b} → (B → A) → (B → B) → B → Stream {a} A
+head (unfold h t y) = h y
+tail (unfold h t y) = unfold h t (t y)
+
+-- Interestingly, the following equivalent definition is not accepted,
+-- throwing a termination checker error (clearly the function, being
+-- coinductively defined, never terminates, but it's not supposed to!):
+--
+-- unfold h t y = (h y) <: (unfold h t (t y))
+
+-- The stream containing all natural numbers
+nats : Stream ℕ
+nats = unfold id suc 0
+
+
+------------------------------------------------------------------------
+-- Interleaving two streams
+
+-- Using copatterns
+_⋈_ : ∀ {a} {A : Set a} → Stream A → Stream A → Stream A
+head (x ⋈ y) = head x
+tail (x ⋈ y) = y ⋈ (tail x)
+
+-- The equivalent explicit definition (not using copatterns) again
+-- gives a termination checker error:
+--
+-- x ⋈ y = (head x) <: (y ⋈ tail x)
+
+-- As a coalgebra
+_⋈′_ : ∀ {a} {A : Set a} → Stream A → Stream A → Stream A
+_⋈′_ {A = A} x y = unfold (head ∘ proj₁) next (x , y)
+  where
+    next : Stream A × Stream A → Stream A × Stream A
+    next (x , y) = y , tail x
+
+-- Bisimulation proof
+⋈↔⋈′ : ∀ {a} {A : Set a} → (x : Stream A) (y : Stream A) →
+       x ⋈ y ≈ x ⋈′ y
+≈-head (⋈↔⋈′ x y) = refl
+≈-tail (⋈↔⋈′ x y) = ⋈↔⋈′ y (tail x)
+
+
+------------------------------------------------------------------------
+-- Zipping two streams
+
+-- Using copatterns
+zip : ∀ {a b} → {A : Set a} {B : Set b} →
+      Stream A → Stream B → Stream (A × B)
+head (zip x y) = (head x , head y)
+tail (zip x y) = zip (tail x) (tail y)
+
+-- As a coalgebra
+zip′ : ∀ {a b} → {A : Set a} {B : Set b} →
+       Stream A → Stream B → Stream (A × B)
+zip′ x y = unfold (mapP head head) (mapP tail tail) (x , y)
+
+-- Bisimulation proof
+zip↔zip′ : ∀ {a b} → {A : Set a} {B : Set b}
+           (x : Stream A) (y : Stream B) → zip x y ≈ zip′ x y
+≈-head (zip↔zip′ x y) = refl
+≈-tail (zip↔zip′ x y) = zip↔zip′ (tail x) (tail y)
+
+
+------------------------------------------------------------------------
+-- More list-like functions on streams
+
+-- Map a function over a stream
+map : ∀ {a b} {A : Set a} {B : Set b} → (A → B) → Stream A → Stream B
+map f = unfold (f ∘ head) tail
+
+-- List the first n elements of a stream
+take : ∀ {a} {A : Set a} → ℕ → Stream A → List A
+take 0       x = []
+take (suc n) x = (head x) ∷ (take n (tail x))
+
+-- Drop the first n elements from a stream
+drop : ∀ {a} {A : Set a} → ℕ → Stream A → Stream A
+drop 0       x = x
+drop (suc n) x = drop n (tail x)
+
+-- Combines take and drop
+split : ∀ {a} {A : Set a} → ℕ → Stream A → List A × Stream A
+split n s = take n s , drop n s
+
+
+------------------------------------------------------------------------
+-- Finding and splitting streams with Any
+
+-- Split a stream on an instance of Any. The head of the stream that is
+-- returned fulfills the predicate.
+takeUntil : ∀ {a p} {A : Set a} {P : A → Set p} →
+            (s : Stream A) → Any P s → List A × Stream A
+takeUntil         s (here  px)  = [] , s
+takeUntil {A = A} s (there any) = head s ∷ (proj₁ p) , proj₂ p
+  where
+    p : List A × Stream A
+    p = takeUntil (tail s) any
+
+-- Proof that the head of the stream returned by takeUntil really does
+-- fulfill the predicate
+takeUntil-lemma : ∀ {a p} → {A : Set a} {P : A → Set p}
+                  (s : Stream A) (any : Any P s) →
+                  P (head (proj₂ (takeUntil s any)))
+takeUntil-lemma s (here px)   = px
+takeUntil-lemma s (there any) = takeUntil-lemma (tail s) any
+
+-- This function discards the elements preceding the one the Any
+-- instance points to. The result comes with a proof that the head of
+-- the stream now fulfills the predicate.
+find : ∀ {a p} {A : Set a} {P : A → Set p} →
+       (s : Stream A) → Any P s → Σ (Stream A) (P ∘ head)
+find s (here  px)  = s , px
+find s (there any) = find (tail s) any
+
+-- Find returns its own proof of correctness, making this lemma trivial.
+find-lemma : ∀ {a p} → {A : Set a} {P : A → Set p}
+             (s : Stream A) (any : Any P s) → P (head (proj₁ (find s any)))
+find-lemma s any with find s any
+find-lemma s any | _ , prf = prf
+
+
+------------------------------------------------------------------------
+-- Finding and splitting streams with AE (always eventually)
+
+dropUntil : ∀ {a p} {A : Set a} {P : A → Set p} →
+            (s : Stream A) → AE P s →
+            ∃ (λ (s : Stream A) → P (head s) × AE P (tail s))
+dropUntil s (here px ps) = s , (px , ♭ ps)
+dropUntil s (there ae)   = dropUntil (tail s) ae
+
+repeat : ∀ {a} {A : Set a} → A → Stream A
+head (repeat x) = x
+tail (repeat x) = repeat x
+
+all-eq : ∀ {a} {A : Set a} (x y : A) → AE (_≡_ x) (repeat x ⋈ repeat y)
+all-eq x y = here refl (♯ (there (all-eq x y)))
 
 {-
-  record Unit {ℓ} : Set ℓ where
-    constructor unit
+record Unit {ℓ} : Set ℓ where
+  constructor unit
 
-  open import Data.Empty
+open import Data.Empty
 
-  ¬ : ∀ {ℓ} → Set ℓ → Set ℓ
-  ¬ P = P → ⊥
+¬ : ∀ {ℓ} → Set ℓ → Set ℓ
+¬ P = P → ⊥
 
-  data noskips : ∀ {a} {A : Set a} (P : A → Set a) → (s : Stream A) → AE P s → Set a
-    base : noskips P s (here px ps) , noskips P (tail s) (♭ ps)
-    next : noskips P s (there ae) = (¬ (P (head s))) × noskips P (tail s) ae
+data noskips : ∀ {a} {A : Set a} (P : A → Set a) → (s : Stream A) → AE P s → Set a
+  base : noskips P s (here px ps) , noskips P (tail s) (♭ ps)
+  next : noskips P s (there ae) = (¬ (P (head s))) × noskips P (tail s) ae
 -}
 
-  filter : ∀ {a p} {A : Set a} → (P : A → Set p) → (s : Stream A) → AE P s →
-           Stream (Σ A P)
-  head (filter P s (here px ps)) = head s , px
-  head (filter P s (there ae))   = head (filter P (tail s) ae)
-  tail (filter P s (here px ps)) = filter P (tail s) (♭ ps)
-  tail (filter P s (there ae))   = tail (filter P (tail s) ae)
+filter : ∀ {a p} {A : Set a} → (P : A → Set p) → (s : Stream A) → AE P s →
+         Stream (Σ A P)
+head (filter P s (here px ps)) = head s , px
+head (filter P s (there ae))   = head (filter P (tail s) ae)
+tail (filter P s (here px ps)) = filter P (tail s) (♭ ps)
+tail (filter P s (there ae))   = tail (filter P (tail s) ae)
 
-  add : Stream ℕ → Stream ℕ → Stream ℕ
-  head (add x y) = head x + head y
-  tail (add x y) = add (tail x) (tail y)
+add : Stream ℕ → Stream ℕ → Stream ℕ
+head (add x y) = head x + head y
+tail (add x y) = add (tail x) (tail y)
 
-  add′ : Stream ℕ → Stream ℕ → Stream ℕ
-  add′ x y = map (uncurry _+_) (zip x y)
+add′ : Stream ℕ → Stream ℕ → Stream ℕ
+add′ x y = map (uncurry _+_) (zip x y)
 
-  add-lemma : ∀ s₁ s₂ → add s₁ s₂ ≈ add′ s₁ s₂
-  ≈-head (add-lemma s₁ s₂) = refl
-  ≈-tail (add-lemma s₁ s₂) = add-lemma (tail s₁) (tail s₂)
+add-lemma : ∀ s₁ s₂ → add s₁ s₂ ≈ add′ s₁ s₂
+≈-head (add-lemma s₁ s₂) = refl
+≈-tail (add-lemma s₁ s₂) = add-lemma (tail s₁) (tail s₂)
 
-  evens : ∀ {a} {A : Set a} → Stream A → Stream A
-  evens = unfold head (tail ∘ tail)
+evens : ∀ {a} {A : Set a} → Stream A → Stream A
+evens = unfold head (tail ∘ tail)
 
-  odds : ∀ {a} {A : Set a} → Stream A → Stream A
-  odds = evens ∘ tail
+odds : ∀ {a} {A : Set a} → Stream A → Stream A
+odds = evens ∘ tail
 
-  fib : Stream ℕ
-  fib = unfold proj₁ next (0 , 1)
-    where
-      next : ℕ × ℕ → ℕ × ℕ
-      next (m , n) = n , (m + n)
+fib : Stream ℕ
+fib = unfold proj₁ next (0 , 1)
+  where
+    next : ℕ × ℕ → ℕ × ℕ
+    next (m , n) = n , (m + n)
 
-  GreaterThan : ℕ → ℕ → Set
-  GreaterThan m n = n ≤ m
+GreaterThan : ℕ → ℕ → Set
+GreaterThan m n = n ≤ m
 
-  Any≥ : ∀ m n → Any (GreaterThan m) (drop n nats)
-  Any≥ m n = {!!}
+Any≥ : ∀ m n → Any (GreaterThan m) (drop n nats)
+Any≥ m n = {!!}
 
-  partition : ∀ {a} {A : Set a} → (A → Bool) → ℕ → Stream A → (List A × List A) × Stream A
-  partition p n s = L.partition p (take n s) , drop n s
+partition : ∀ {a} {A : Set a} → (A → Bool) → ℕ → Stream A → (List A × List A) × Stream A
+partition p n s = L.partition p (take n s) , drop n s
 
-  record AE′ {a p} {A : Set a}
-             (P : A → Set p) (s : Stream A) : Set (a ⊔ p) where
-    coinductive
-    field
-      steps : ℕ
-      then  : P (head (drop steps s))
-      after : AE′ P (tail (drop steps s))
+record AE′ {a p} {A : Set a}
+           (P : A → Set p) (s : Stream A) : Set (a ⊔ p) where
+  coinductive
+  field
+    steps : ℕ
+    then  : P (head (drop steps s))
+    after : AE′ P (tail (drop steps s))
 --      next : Σ ℕ (λ n → P (head (drop n s)) × AE′ P (tail (drop n s)))
 
-  open AE′
+open AE′
 
-  findAE′ : ∀ {a p} {A : Set a} {P : A → Set p} → (s : Stream A) → AE′ P s →
-            Σ (Stream A) (λ s → P (head s) × AE′ P (tail s))
-  findAE′ s ae = drop (steps ae) s , (then ae , after ae) -- drop (proj₁ (now ae)) s , (proj₂ (now ae) , {!!})
-
-{-
-  filter : ∀ {a p} {A : Set a} → (P : A → Set p) → (s : Stream A) → AE P s →
-           Stream (Σ A P)
-  filter {A = A} P s ae = unfold proj step (findAE s ae)
-    where
-      State = Σ (Stream A) (λ s → P (head s) × AE P (tail s))
-
-      proj : State → Σ A P
-      proj (s , P-head , ae-tail) = head s , P-head
-
-      step : State → State
-      step (s , P-head , ae-tail) = findAE (tail s) ae-tail
--}
-
-  unfoldAE′ : ∀ {a b p} {A : Set a} {B : Set b} →
-              (P : A → Set p) → (s : Stream A) → B →
-              (p : B → ℕ) → ((st : B) → P (head (drop (p st) s))) →
-              ((st : B) → AE′ P (tail (drop (p st) s))) →
-              AE′ P s -- (g : ℕ → ℕ) → ℕ → (P : A → Set p) → (s : Stream A) → (∀ i → P (head (drop (g i) s))) → AE′ P s
-  steps (unfoldAE′ P s i f g h) = f i
-  then  (unfoldAE′ P s i f g h) = g i
-  after (unfoldAE′ P s i f g h) = {!!}
+findAE′ : ∀ {a p} {A : Set a} {P : A → Set p} → (s : Stream A) → AE′ P s →
+          Σ (Stream A) (λ s → P (head s) × AE′ P (tail s))
+findAE′ s ae = drop (steps ae) s , (then ae , after ae) -- drop (proj₁ (now ae)) s , (proj₂ (now ae) , {!!})
 
 {-
-  now  (all-eq x y) = 0 , refl
-  then (all-eq x y) = 1 , (all-eq x y)
--}
-{-
-  all-eq : ∀ {a} {A : Set a} (x y : A) → AE (_≡_ x) (repeat x ⋈ repeat y)
-  all-eq x y = here refl (there (all-eq x y))
+filter : ∀ {a p} {A : Set a} → (P : A → Set p) → (s : Stream A) → AE P s →
+         Stream (Σ A P)
+filter {A = A} P s ae = unfold proj step (findAE s ae)
+  where
+    State = Σ (Stream A) (λ s → P (head s) × AE P (tail s))
+
+    proj : State → Σ A P
+    proj (s , P-head , ae-tail) = head s , P-head
+
+    step : State → State
+    step (s , P-head , ae-tail) = findAE (tail s) ae-tail
 -}
 
-  repeat′ : ∀ {a} {A : Set a} → A → Stream A
-  repeat′ = unfold id id
+unfoldAE′ : ∀ {a b p} {A : Set a} {B : Set b} →
+            (P : A → Set p) → (s : Stream A) → B →
+            (p : B → ℕ) → ((st : B) → P (head (drop (p st) s))) →
+            ((st : B) → AE′ P (tail (drop (p st) s))) →
+            AE′ P s -- (g : ℕ → ℕ) → ℕ → (P : A → Set p) → (s : Stream A) → (∀ i → P (head (drop (g i) s))) → AE′ P s
+steps (unfoldAE′ P s i f g h) = f i
+then  (unfoldAE′ P s i f g h) = g i
+after (unfoldAE′ P s i f g h) = {!!}
+
+{-
+now  (all-eq x y) = 0 , refl
+then (all-eq x y) = 1 , (all-eq x y)
+-}
+{-
+all-eq : ∀ {a} {A : Set a} (x y : A) → AE (_≡_ x) (repeat x ⋈ repeat y)
+all-eq x y = here refl (there (all-eq x y))
+-}
+
+repeat′ : ∀ {a} {A : Set a} → A → Stream A
+repeat′ = unfold id id
 
 ------------------------------------------
 
-  open BTree
+unfoldT : ∀ {a b} {A : Set a} {B : Set b} → (B → A) → (B → B × B) → B → BTree {a} A
+label (unfoldT h y t) = h t
+left  (unfoldT h y t) = unfoldT h y (proj₁ (y t))
+right (unfoldT h y t) = unfoldT h y (proj₂ (y t))
 
-  unfoldT : ∀ {a b} {A : Set a} {B : Set b} → (B → A) → (B → B × B) → B → BTree {a} A
-  label (unfoldT h y t) = h t
-  left  (unfoldT h y t) = unfoldT h y (proj₁ (y t))
-  right (unfoldT h y t) = unfoldT h y (proj₂ (y t))
+repeatT : ∀ {a} {A : Set a} → A → BTree A
+repeatT = unfoldT id (λ x → x , x)
 
-  repeatT : ∀ {a} {A : Set a} → A → BTree A
-  repeatT = unfoldT id (λ x → x , x)
+lspine : ∀ {a} {A : Set a} → BTree A → Stream A
+head (lspine t) = label t
+tail (lspine t) = lspine (left t)
 
-  lspine : ∀ {a} {A : Set a} → BTree A → Stream A
-  head (lspine t) = label t
-  tail (lspine t) = lspine (left t)
-
-  lspine′ : ∀ {a} {A : Set a} → BTree A → Stream A
-  lspine′ = unfold label left
+lspine′ : ∀ {a} {A : Set a} → BTree A → Stream A
+lspine′ = unfold label left
