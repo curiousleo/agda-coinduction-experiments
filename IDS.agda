@@ -72,7 +72,7 @@ data AE {a p} {A : Set a}
 
 
 ------------------------------------------------------------------------
--- Bisimulation
+-- Bisimulation for streams
 
 infix 4 _≈_
 
@@ -97,6 +97,20 @@ record BTree {a} (A : Set a) : Set a where
     right : BTree A
 
 open BTree
+
+------------------------------------------------------------------------
+-- Bisimulation for trees
+
+infix 4 _≈T_
+
+record _≈T_ {a} {A : Set a} (x y : BTree A) : Set a where
+  coinductive
+  field
+    ≈-left  : left x  ≈T left y
+    ≈-label : label x ≡  label y
+    ≈-right : right x ≈T right y
+
+open _≈T_
 
 
 ------------------------------------------------------------------------
