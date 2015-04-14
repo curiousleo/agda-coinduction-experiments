@@ -165,7 +165,7 @@ _⋈′_ {A = A} x y = unfold (head ∘ proj₁) next (x , y)
 
 
 ------------------------------------------------------------------------
--- Zipping two streams
+-- Zipping and unzipping two streams
 
 -- Using copatterns
 zip : ∀ {a b} → {A : Set a} {B : Set b} →
@@ -184,6 +184,19 @@ zip↔zip′ : ∀ {a b} → {A : Set a} {B : Set b}
 ≈-head (zip↔zip′ x y) = refl
 ≈-tail (zip↔zip′ x y) = zip↔zip′ (tail x) (tail y)
 
+-- Unzipping using nested (!!) copatterns
+unzip : ∀ {a b} → {A : Set a} {B : Set b} →
+        Stream (A × B) → Stream A × Stream B
+head (proj₁ (unzip s)) = proj₁ (head s)
+tail (proj₁ (unzip s)) = proj₁ (unzip (tail s))
+head (proj₂ (unzip s)) = proj₂ (head s)
+tail (proj₂ (unzip s)) = proj₂ (unzip (tail s))
+
+-- Bisimulation proof: zip is unzip's left inverse
+zip∘unzip : ∀ {a b} → {A : Set a} {B : Set b} (s : Stream (A × B)) →
+            uncurry zip (unzip s) ≈ s
+≈-head (zip∘unzip s) = refl
+≈-tail (zip∘unzip s) = zip∘unzip (tail s)
 
 ------------------------------------------------------------------------
 -- More list-like functions on streams
