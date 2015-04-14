@@ -374,14 +374,15 @@ fib = unfold proj₁ next (0 , 1)
 -- which returns a pair. The first element of that pair is used to
 -- generate the left branch of the tree and second element for the
 -- right branch.
-unfoldT : ∀ {a b} {A : Set a} {B : Set b} → (B → A) → (B → B × B) → B → BTree {a} A
-label (unfoldT h t y) = h y
-left  (unfoldT h t y) = unfoldT h t (proj₁ (t y))
-right (unfoldT h t y) = unfoldT h t (proj₂ (t y))
+unfoldT : ∀ {a b} {A : Set a} {B : Set b} →
+          (B → A) → (B → B) → (B → B) → B → BTree {a} A
+label (unfoldT h l r y) = h y
+left  (unfoldT h l r y) = unfoldT h l r (l y)
+right (unfoldT h l r y) = unfoldT h l r (r y)
 
 -- Generate an infinite tree with `x` as the label everywhere
 repeatT : ∀ {a} {A : Set a} → A → BTree A
-repeatT = unfoldT id (λ x → x , x)
+repeatT = unfoldT id id id
 
 -- The left spine of the tree as a stream using copatterns
 lspine : ∀ {a} {A : Set a} → BTree A → Stream A
