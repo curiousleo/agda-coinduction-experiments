@@ -215,6 +215,11 @@ drop : ∀ {a} {A : Set a} → ℕ → Stream A → Stream A
 drop 0       x = x
 drop (suc n) x = drop n (tail x)
 
+-- Get the n'th element of the stream
+_!_ : ∀ {a} → {A : Set a} → Stream A → ℕ → A
+s ! zero = head s
+s ! suc n = tail s ! n
+
 -- Combines take and drop
 split : ∀ {a} {A : Set a} → ℕ → Stream A → List A × Stream A
 split n s = take n s , drop n s
