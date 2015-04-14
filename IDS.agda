@@ -317,6 +317,12 @@ repeat↔repeat′ : ∀ {a} → {A : Set a} (x : A) → repeat x ≈ repeat′ 
 ≈-head (repeat↔repeat′ x) = refl
 ≈-tail (repeat↔repeat′ x) = repeat↔repeat′ x
 
+-- Example always-eventually proof: the result of interleaving
+-- `repeat x` and `repeat y` always eventually contains an element
+-- equal to `x`.
+ae-eq : ∀ {a} {A : Set a} (x y : A) → AE (_≡_ x) (repeat x ⋈ repeat y)
+ae-eq x y = here refl (♯ (there (ae-eq x y)))
+
 -- Every other element, starting with head
 evens : ∀ {a} {A : Set a} → Stream A → Stream A
 evens = unfold head (tail ∘ tail)
@@ -325,8 +331,12 @@ evens = unfold head (tail ∘ tail)
 odds : ∀ {a} {A : Set a} → Stream A → Stream A
 odds = evens ∘ tail
 
-all-eq : ∀ {a} {A : Set a} (x y : A) → AE (_≡_ x) (repeat x ⋈ repeat y)
-all-eq x y = here refl (♯ (there (all-eq x y)))
+-- Prepends the elements of a list to a stream
+_++_ : ∀ {a} → {A : Set a} → List A → Stream A → Stream A
+head ([]       ++ s) = head s
+tail ([]       ++ s) = tail s
+head ((x ∷ xs) ++ s) = x
+tail ((x ∷ xs) ++ s) = xs ++ s
 
 
 ------------------------------------------------------------------------
