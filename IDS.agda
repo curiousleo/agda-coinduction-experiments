@@ -395,6 +395,20 @@ lspine′ = unfold label left
 
 
 ------------------------------------------------------------------------
+-- Binary trees to streams
+------------------------------------------------------------------------
+
+fromStream : ∀ {a} → {A : Set a} → Stream A → BTree A
+fromStream {A = A} s = unfoldT (head ∘ proj₁) l (mapP tail suc ∘ l) (s , zero)
+  where
+    l : Stream A × ℕ → Stream A × ℕ
+    l (s , n) = drop (suc n) s , suc (2 * n)
+
+fromStream′ : ∀ {a} → {A : Set a} → Stream A → BTree A
+fromStream′ {A = A} s = unfoldT (_!_ s) (suc ∘ (_*_ 2)) ((_*_ 2) ∘ suc) zero
+
+
+------------------------------------------------------------------------
 -- Random stuff
 ------------------------------------------------------------------------
 
