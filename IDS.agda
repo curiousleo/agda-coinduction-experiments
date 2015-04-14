@@ -14,8 +14,6 @@ open import Data.Bool
 open import Data.Nat hiding (_⊔_)
 import Data.List as L
 open L using (List; []; _∷_)
-import Data.List.NonEmpty as NE
-open NE using (List⁺)
 open import Data.Product hiding (zip) renaming (map to mapP)
 open import Data.Sum using (_⊎_)
 
@@ -212,10 +210,6 @@ take : ∀ {a} {A : Set a} → ℕ → Stream A → List A
 take 0       x = []
 take (suc n) x = (head x) ∷ (take n (tail x))
 
-take⁺ : ∀ {a} {A : Set a} (n : ℕ) {gt : n > 0} → Stream A → List⁺ A
-take⁺ zero {()} s
-take⁺ (suc n)   s = head s NE.∷ take n (tail s)
-
 -- Drop the first n elements from a stream
 drop : ∀ {a} {A : Set a} → ℕ → Stream A → Stream A
 drop 0       x = x
@@ -344,13 +338,6 @@ tail ([]       ++ s) = tail s
 head ((x ∷ xs) ++ s) = x
 tail ((x ∷ xs) ++ s) = xs ++ s
 
-flatten : ∀ {a} → {A : Set a} → Stream (List⁺ A) → Stream A
-flatten {A = A} = unfold (NE.head ∘ head) next
-  where
-    next : Stream (List⁺ A) → Stream (List⁺ A)
-    head (next s) = {!!}
-    tail (next s) = {!!}
-
 
 ------------------------------------------------------------------------
 -- Fibonacci series as a stream
@@ -411,31 +398,6 @@ lspine′ = unfold label left
 -- Binary trees to streams
 ------------------------------------------------------------------------
 
-{-
-chomp : ∀ {a} → {A : Set a} → ℕ → Stream A → Stream A × Stream A
-chomp n s = proj₁ split₁ ++ proj₂ next , proj₁ split₂ ++ proj₁ next
-  where
-    split₁ = split n s
-    split₂ = split n (proj₂ split₁)
-    next = chomp (2 * n) (proj₂ split₂)
--}
-
-chunk : ∀ {a} → {A : Set a} (n : ℕ) → {_ : n > 0} →
-        Stream A → Stream (List⁺ A × List⁺ A)
-head (chunk zero    {()} s)
-head (chunk (suc n) {gt} s) = take⁺ (suc n) {gt} s , take⁺ (suc n) {gt} (drop (suc n) s)
-tail (chunk zero {()} s)
-tail (chunk (suc n) {gt} s) = chunk (2 * (suc n)) {s≤s z≤n} (drop (2 * (suc n)) s)
-
-chomp : ∀ {a} → {A : Set a} (n : ℕ) → {_ : n > 0} →
-        Stream A → Stream A × Stream A
-chomp zero    {()} s
-head (proj₁ (chomp (suc n) {gt} s)) = head s
-tail (proj₁ (chomp (suc zero) s)) = head (tail s) <: (proj₁ (chomp {!!} {!!}))
-tail (proj₁ (chomp (suc (suc n)) s)) = {!!}
-head (proj₂ (chomp (suc n) {gt} s)) = {!!}
-tail (proj₂ (chomp (suc n) {gt} s)) = {!!}
-
 fromStream : ∀ {a} → {A : Set a} → Stream A → BTree A
 fromStream {A = A} s = unfoldT (head ∘ proj₁) l (mapP tail suc ∘ l) (s , zero)
   where
@@ -444,24 +406,6 @@ fromStream {A = A} s = unfoldT (head ∘ proj₁) l (mapP tail suc ∘ l) (s , z
 
 fromStream′ : ∀ {a} → {A : Set a} → Stream A → BTree A
 fromStream′ {A = A} s = unfoldT (_!_ s) (suc ∘ (_*_ 2)) ((_*_ 2) ∘ suc) zero
-
-toStream : ∀ {a} → {A : Set a} → BTree A → Stream A
-toStream {A = A} t = unfold {!label!} {!!} {!!}
-
-{-
-chomp₁ : ∀ {a} → {A : Set a} (n : ℕ) {_ : n > 0} → Stream A → Stream A
-chomp₁ zero {()} s
-head (chomp₁ (suc n) s) = head s
-tail (chomp₁ (suc n) s) = take n (tail s) ++ chomp₁ (2 * suc n) {s≤s z≤n} (drop (2 * suc n) s)
--}
-{-
-chunk : ∀ {a} → {A : Set a} → ℕ → Stream A → Stream (List A)
-head (chunk n s) = take n s
-tail (chunk n s) = take n (drop n s) <: chunk (2 * n) (drop (2 * n) s)
-
-chomp : ∀ {a} → {A : Set a} → ℕ → Stream A → Stream A × Stream A
-chomp n s = unzip (zip {!!} {!!})
--}
 
 
 ------------------------------------------------------------------------
